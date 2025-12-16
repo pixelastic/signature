@@ -52,6 +52,27 @@ function App() {
           </div>
         )}
       </main>
+
+      <footer className="footer">
+        <p>
+          Made by{' '}
+          <a
+            href="https://bsky.app/profile/pixelastic.bsky.social"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            pixelastic
+          </a>
+          {' · '}
+          <a
+            href="https://github.com/pixelastic/signature"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Code available on GitHub
+          </a>
+        </p>
+      </footer>
     </div>
   );
 }

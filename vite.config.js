@@ -7,6 +7,7 @@ import vitePluginReact from '@vitejs/plugin-react';
 
 export default {
   ...config,
+  base: './',
   plugins: [vitePluginReact()],
   optimizeDeps: {
     include: ['pdfjs-dist'],
