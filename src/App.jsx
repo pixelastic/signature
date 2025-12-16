@@ -11,6 +11,10 @@ function App() {
   const [pdfFile, setPdfFile] = useState(null);
   const [signatureImage, setSignatureImage] = useState(null);
   const [signaturePosition, setSignaturePosition] = useState({ x: 50, y: 50 });
+  const [textAnnotations, setTextAnnotations] = useState([]);
+  const [isAddingText, setIsAddingText] = useState(false);
+  const [textFontSize, setTextFontSize] = useState(14);
+  const [textFontFamily, setTextFontFamily] = useState('Helvetica');
 
   return (
     <div className="app">
@@ -31,6 +35,14 @@ function App() {
             signatureImage={signatureImage}
             signaturePosition={signaturePosition}
             onPositionChange={setSignaturePosition}
+            textAnnotations={textAnnotations}
+            onTextAnnotationsChange={setTextAnnotations}
+            isAddingText={isAddingText}
+            onAddingTextChange={setIsAddingText}
+            textFontSize={textFontSize}
+            onTextFontSizeChange={setTextFontSize}
+            textFontFamily={textFontFamily}
+            onTextFontFamilyChange={setTextFontFamily}
           />
         )}
 

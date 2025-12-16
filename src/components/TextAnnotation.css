@@ -1,0 +1,50 @@
+.text-annotation-input {
+  border: 2px solid #3498db;
+  background-color: rgba(255, 255, 255, 0.95);
+  padding: 4px 8px;
+  border-radius: 4px;
+  outline: none;
+  min-width: 150px;
+}
+
+.text-annotation-display {
+  position: relative;
+  cursor: move;
+  padding: 4px 8px;
+  padding-right: 28px;
+  background-color: rgba(255, 255, 200, 0.3);
+  border: 1px dashed #f39c12;
+  border-radius: 4px;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.text-annotation-display:hover {
+  background-color: rgba(255, 255, 200, 0.5);
+  border-color: #e67e22;
+}
+
+.text-annotation-delete {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  border: none;
+  background-color: #e74c3c;
+  color: white;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.text-annotation-delete:hover {
+  background-color: #c0392b;
+}

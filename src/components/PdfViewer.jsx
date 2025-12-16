@@ -3,6 +3,7 @@ import { Document, Page, pdfjs } from 'react-pdf';
 import { DndContext, useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { savePdfWithSignature } from '../utils/pdfManipulation.js';
+import TextAnnotation from './TextAnnotation.jsx';
 import './PdfViewer.css';
 
 // Configure pdf.js worker
@@ -47,12 +48,28 @@ function DraggableSignature({ signatureImage, position }) {
  * @param root0.signatureImage
  * @param root0.signaturePosition
  * @param root0.onPositionChange
+ * @param root0.textAnnotations
+ * @param root0.onTextAnnotationsChange
+ * @param root0.isAddingText
+ * @param root0.onAddingTextChange
+ * @param root0.textFontSize
+ * @param root0.onTextFontSizeChange
+ * @param root0.textFontFamily
+ * @param root0.onTextFontFamilyChange
  */
 function PdfViewer({
   pdfFile,
   signatureImage,
   signaturePosition,
   onPositionChange,
+  textAnnotations,
+  onTextAnnotationsChange,
+  isAddingText,
+  onAddingTextChange,
+  textFontSize,
+  onTextFontSizeChange,
+  textFontFamily,
+  onTextFontFamilyChange,
 }) {
   const [numPages, setNumPages] = useState(null);
   const [pageNumber, setPageNumber] = useState(1);
@@ -86,18 +103,87 @@ function PdfViewer({
    * @param event
    */
   function handleDragEnd(event) {
-    const { delta } = event;
-    onPositionChange({
-      x: signaturePosition.x + delta.x,
-      y: signaturePosition.y + delta.y,
-    });
+    const { delta, active } = event;
+
+    if (active.id === 'signature') {
+      onPositionChange({
+        x: signaturePosition.x + delta.x,
+        y: signaturePosition.y + delta.y,
+      });
+    } else {
+      // Handle text annotation drag
+      const annotationId = active.id;
+      onTextAnnotationsChange(
+        textAnnotations.map((annotation) =>
+          annotation.id === annotationId
+            ? {
+                ...annotation,
+                x: annotation.x + delta.x,
+                y: annotation.y + delta.y,
+              }
+            : annotation,
+        ),
+      );
+    }
+  }
+
+  /**
+   *
+   * @param event
+   */
+  function handlePdfClick(event) {
+    if (!isAddingText) return;
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    const newAnnotation = {
+      id: `text-${Date.now()}`,
+      text: '',
+      x,
+      y,
+      pageIndex: pageNumber - 1,
+      fontSize: textFontSize,
+      fontFamily: textFontFamily,
+      isEditing: true,
+    };
+
+    onTextAnnotationsChange([...textAnnotations, newAnnotation]);
+    onAddingTextChange(false);
+  }
+
+  /**
+   *
+   * @param updatedAnnotation
+   */
+  function handleTextUpdate(updatedAnnotation) {
+    onTextAnnotationsChange(
+      textAnnotations.map((annotation) =>
+        annotation.id === updatedAnnotation.id ? updatedAnnotation : annotation,
+      ),
+    );
+  }
+
+  /**
+   *
+   * @param annotationId
+   */
+  function handleTextDelete(annotationId) {
+    onTextAnnotationsChange(
+      textAnnotations.filter((annotation) => annotation.id !== annotationId),
+    );
   }
 
   /**
    *
    */
   async function handleExport() {
-    if (!pdfFile || !signatureImage || !pageWidth || !pageHeight) return;
+    if (!pdfFile || !pageWidth || !pageHeight) return;
+    if (!signatureImage && textAnnotations.length === 0) {
+      alert('Please add a signature or text annotations before exporting.');
+      return;
+    }
 
     setIsExporting(true);
     try {
@@ -105,6 +191,7 @@ function PdfViewer({
         pdfFile.uint8Array,
         signatureImage,
         signaturePosition,
+        textAnnotations,
         pageNumber - 1,
         pageWidth,
         pageHeight,
@@ -138,9 +225,44 @@ function PdfViewer({
             Next
           </button>
         </div>
+
+        <div className="text-controls">
+          <button
+            onClick={() => onAddingTextChange(!isAddingText)}
+            className={`add-text-button ${isAddingText ? 'active' : ''}`}
+          >
+            {isAddingText ? 'Cancel' : 'Add Text'}
+          </button>
+
+          <select
+            value={textFontSize}
+            onChange={(e) => onTextFontSizeChange(Number(e.target.value))}
+            className="font-size-selector"
+          >
+            <option value={12}>12pt</option>
+            <option value={14}>14pt</option>
+            <option value={16}>16pt</option>
+            <option value={18}>18pt</option>
+            <option value={24}>24pt</option>
+          </select>
+
+          <select
+            value={textFontFamily}
+            onChange={(e) => onTextFontFamilyChange(e.target.value)}
+            className="font-family-selector"
+          >
+            <option value="Helvetica">Helvetica</option>
+            <option value="Courier">Courier</option>
+            <option value="Times-Roman">Times Roman</option>
+          </select>
+        </div>
+
         <button
           onClick={handleExport}
-          disabled={isExporting || !signatureImage}
+          disabled={
+            isExporting ||
+            (!signatureImage && textAnnotations.length === 0)
+          }
           className="export-button"
         >
           {isExporting ? 'Exporting...' : 'Download Signed PDF'}
@@ -149,7 +271,10 @@ function PdfViewer({
 
       <div className="pdf-container" ref={containerRef}>
         <DndContext onDragEnd={handleDragEnd}>
-          <div className="pdf-page-wrapper">
+          <div
+            className={`pdf-page-wrapper ${isAddingText ? 'adding-text' : ''}`}
+            onClick={handlePdfClick}
+          >
             <Document
               file={pdfFile.arrayBuffer}
               onLoadSuccess={onDocumentLoadSuccess}
@@ -168,6 +293,18 @@ function PdfViewer({
                 position={signaturePosition}
               />
             )}
+            {textAnnotations
+              .filter(
+                (annotation) => annotation.pageIndex === pageNumber - 1,
+              )
+              .map((annotation) => (
+                <TextAnnotation
+                  key={annotation.id}
+                  annotation={annotation}
+                  onUpdate={handleTextUpdate}
+                  onDelete={handleTextDelete}
+                />
+              ))}
           </div>
         </DndContext>
       </div>
