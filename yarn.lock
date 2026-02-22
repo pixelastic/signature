@@ -6592,7 +6592,7 @@ __metadata:
     react: "npm:19.2.4"
     react-dom: "npm:19.2.4"
     react-dropzone: "npm:14.4.1"
-    react-pdf: "npm:10.3.0"
+    react-pdf: "npm:10.4.0"
     vite: "npm:7.3.1"
   languageName: unknown
   linkType: soft
@@ -7203,9 +7203,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"react-pdf@npm:10.3.0":
-  version: 10.3.0
-  resolution: "react-pdf@npm:10.3.0"
+"react-pdf@npm:10.4.0":
+  version: 10.4.0
+  resolution: "react-pdf@npm:10.4.0"
   dependencies:
     clsx: "npm:^2.0.0"
     dequal: "npm:^2.0.3"
@@ -7222,7 +7222,7 @@ __metadata:
   peerDependenciesMeta:
     "@types/react":
       optional: true
-  checksum: 10c0/433d55ce4bc1b93655ab0edbac6f08b27d544939e76756ed7c34f26cf8b0f39e0f6ef965a771da4511a98ba9b126a6e7cecb18c616e4ab54eb2ee0b1cfba5bfa
+  checksum: 10c0/36e7ce0523e350ee633d7ff43ded37dc38d91e37059c70924c59bd879c692329db39c57298de1365da18c29bb3c0e4ae9ed470e8751d6e1be1a5eefeb9e2cc58
   languageName: node
   linkType: hard
 
