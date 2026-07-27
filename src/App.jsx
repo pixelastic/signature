@@ -11,10 +11,22 @@ function App() {
   const [pdfFile, setPdfFile] = useState(null);
   const [signatureImage, setSignatureImage] = useState(null);
   const [signaturePosition, setSignaturePosition] = useState({ x: 50, y: 50 });
+  const [signaturePageIndex, setSignaturePageIndex] = useState(0);
+  const [signatureScale, setSignatureScale] = useState(1);
   const [textAnnotations, setTextAnnotations] = useState([]);
   const [isAddingText, setIsAddingText] = useState(false);
   const [textFontSize, setTextFontSize] = useState(14);
   const [textFontFamily, setTextFontFamily] = useState('Helvetica');
+
+  /**
+   *
+   */
+  function handleSignatureDelete() {
+    setSignatureImage(null);
+    setSignaturePosition({ x: 50, y: 50 });
+    setSignaturePageIndex(0);
+    setSignatureScale(1);
+  }
 
   return (
     <div className="app">
@@ -35,6 +47,11 @@ function App() {
             signatureImage={signatureImage}
             signaturePosition={signaturePosition}
             onPositionChange={setSignaturePosition}
+            signaturePageIndex={signaturePageIndex}
+            onSignaturePageChange={setSignaturePageIndex}
+            signatureScale={signatureScale}
+            onSignatureScaleChange={setSignatureScale}
+            onSignatureDelete={handleSignatureDelete}
             textAnnotations={textAnnotations}
             onTextAnnotationsChange={setTextAnnotations}
             isAddingText={isAddingText}

@@ -2,7 +2,6 @@
   background-color: white;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
 }
 
 .pdf-controls {
@@ -14,32 +13,9 @@
   background-color: #f8f9fa;
   flex-wrap: wrap;
   gap: 1rem;
-}
-
-.page-controls {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.page-controls button {
-  padding: 0.5rem 1rem;
-  background-color: #3498db;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  transition: background-color 0.2s;
-}
-
-.page-controls button:hover:not(:disabled) {
-  background-color: #2980b9;
-}
-
-.page-controls button:disabled {
-  background-color: #bdc3c7;
-  cursor: not-allowed;
+  position: sticky;
+  top: 0;
+  z-index: 20;
 }
 
 .export-button {
@@ -67,10 +43,16 @@
   padding: 2rem;
   background-color: #e9ecef;
   display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  min-height: 600px;
-  overflow: auto;
+  flex-direction: column;
+  align-items: center;
+}
+
+.pdf-document {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
+  user-select: none;
 }
 
 .pdf-page-wrapper {
@@ -79,8 +61,24 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-.pdf-document {
-  user-select: none;
+.pdf-page-wrapper.adding-text {
+  cursor: crosshair;
+}
+
+.page-number-label {
+  text-align: center;
+  padding: 0.4rem 0;
+  font-size: 0.8rem;
+  color: #666;
+  background-color: rgba(255, 255, 255, 0.8);
+  pointer-events: none;
+}
+
+/* Signature */
+.signature-wrapper.selected .draggable-signature {
+  border-color: #2ecc71;
+  border-style: solid;
+  box-shadow: 0 0 0 3px rgba(46, 204, 113, 0.3);
 }
 
 .draggable-signature {
@@ -98,6 +96,48 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
+.signature-delete-btn {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background-color: #e74c3c;
+  color: white;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 11;
+  transition: background-color 0.2s;
+}
+
+.signature-delete-btn:hover {
+  background-color: #c0392b;
+}
+
+.signature-resize-handle {
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  width: 14px;
+  height: 14px;
+  background-color: #3498db;
+  border: 2px solid white;
+  cursor: nwse-resize;
+  border-radius: 2px;
+  z-index: 11;
+}
+
+.signature-resize-handle:hover {
+  background-color: #2980b9;
+}
+
+/* Text controls */
 .text-controls {
   display: flex;
   align-items: center;
@@ -131,8 +171,4 @@
   background-color: white;
   cursor: pointer;
   font-size: 0.9rem;
-}
-
-.pdf-page-wrapper.adding-text {
-  cursor: crosshair;
 }

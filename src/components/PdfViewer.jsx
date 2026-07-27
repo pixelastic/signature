@@ -14,8 +14,19 @@ pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/b
  * @param root0
  * @param root0.signatureImage
  * @param root0.position
+ * @param root0.scale
+ * @param root0.selected
+ * @param root0.onDelete
+ * @param root0.onScaleChange
  */
-function DraggableSignature({ signatureImage, position }) {
+function DraggableSignature({
+  signatureImage,
+  position,
+  scale,
+  selected,
+  onDelete,
+  onScaleChange,
+}) {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
     id: 'signature',
   });
@@ -29,14 +40,78 @@ function DraggableSignature({ signatureImage, position }) {
     zIndex: 10,
   };
 
+  /**
+   *
+   * @param e
+   */
+  function handleResizePointerDown(e) {
+    e.stopPropagation();
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startScale = scale;
+
+    /**
+     *
+     * @param moveEvent
+     */
+    function onPointerMove(moveEvent) {
+      const dx = moveEvent.clientX - startX;
+      const dy = moveEvent.clientY - startY;
+      const diagonal = (dx + dy) / 2;
+      const newScale = Math.max(0.3, Math.min(5, startScale + diagonal / 100));
+      onScaleChange(newScale);
+    }
+
+    /**
+     *
+     */
+    function onPointerUp() {
+      document.removeEventListener('pointermove', onPointerMove);
+      document.removeEventListener('pointerup', onPointerUp);
+    }
+
+    document.addEventListener('pointermove', onPointerMove);
+    document.addEventListener('pointerup', onPointerUp);
+  }
+
   return (
-    <div ref={setNodeRef} style={style} {...listeners} {...attributes}>
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`signature-wrapper ${selected ? 'selected' : ''}`}
+      {...listeners}
+      {...attributes}
+    >
       <img
         src={signatureImage}
         alt="Signature"
         className="draggable-signature"
+        style={{
+          maxWidth: `${200 * scale}px`,
+          maxHeight: `${100 * scale}px`,
+        }}
         draggable={false}
       />
+      {selected && (
+        <>
+          <button
+            className="signature-delete-btn"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            title="Delete signature"
+          >
+            ×
+          </button>
+          <div
+            className="signature-resize-handle"
+            onPointerDown={handleResizePointerDown}
+          />
+        </>
+      )}
     </div>
   );
 }
@@ -48,6 +123,11 @@ function DraggableSignature({ signatureImage, position }) {
  * @param root0.signatureImage
  * @param root0.signaturePosition
  * @param root0.onPositionChange
+ * @param root0.signaturePageIndex
+ * @param root0.onSignaturePageChange
+ * @param root0.signatureScale
+ * @param root0.onSignatureScaleChange
+ * @param root0.onSignatureDelete
  * @param root0.textAnnotations
  * @param root0.onTextAnnotationsChange
  * @param root0.isAddingText
@@ -62,6 +142,11 @@ function PdfViewer({
   signatureImage,
   signaturePosition,
   onPositionChange,
+  signaturePageIndex,
+  onSignaturePageChange,
+  signatureScale,
+  onSignatureScaleChange,
+  onSignatureDelete,
   textAnnotations,
   onTextAnnotationsChange,
   isAddingText,
@@ -72,16 +157,14 @@ function PdfViewer({
   onTextFontFamilyChange,
 }) {
   const [numPages, setNumPages] = useState(null);
-  const [pageNumber, setPageNumber] = useState(1);
   const [isExporting, setIsExporting] = useState(false);
+  const [pageDimensions, setPageDimensions] = useState({});
+  const [signatureSelected, setSignatureSelected] = useState(false);
   const containerRef = useRef(null);
-  const [pageWidth, setPageWidth] = useState(null);
-  const [pageHeight, setPageHeight] = useState(null);
+  const pageRefs = useRef({});
 
   /**
    *
-   * @param root0
-   * @param root0.numPages
    * @param input
    */
   function onDocumentLoadSuccess(input) {
@@ -91,11 +174,14 @@ function PdfViewer({
   /**
    *
    * @param page
+   * @param pageIndex
    */
-  function onPageLoadSuccess(page) {
+  function handlePageLoadSuccess(page, pageIndex) {
     const viewport = page.getViewport({ scale: 1 });
-    setPageWidth(viewport.width);
-    setPageHeight(viewport.height);
+    setPageDimensions((prev) => ({
+      ...prev,
+      [pageIndex]: { width: viewport.width, height: viewport.height },
+    }));
   }
 
   /**
@@ -103,54 +189,93 @@ function PdfViewer({
    * @param event
    */
   function handleDragEnd(event) {
-    const { delta, active } = event;
+    const { delta, active, activatorEvent } = event;
 
     if (active.id === 'signature') {
-      onPositionChange({
-        x: signaturePosition.x + delta.x,
-        y: signaturePosition.y + delta.y,
-      });
-    } else {
-      // Handle text annotation drag
-      const annotationId = active.id;
-      onTextAnnotationsChange(
-        textAnnotations.map((annotation) =>
-          annotation.id === annotationId
-            ? {
-                ...annotation,
-                x: annotation.x + delta.x,
-                y: annotation.y + delta.y,
-              }
-            : annotation,
-        ),
-      );
+      // Treat as click if barely moved
+      if (Math.abs(delta.x) < 3 && Math.abs(delta.y) < 3) {
+        setSignatureSelected((prev) => !prev);
+        return;
+      }
+      setSignatureSelected(false);
+
+      // Detect target page from pointer position
+      const pointerY = activatorEvent.clientY + delta.y;
+      let targetPageIndex = signaturePageIndex;
+      for (let i = 0; i < numPages; i++) {
+        const el = pageRefs.current[i];
+        if (!el) continue;
+        const rect = el.getBoundingClientRect();
+        if (pointerY >= rect.top && pointerY <= rect.bottom) {
+          targetPageIndex = i;
+          break;
+        }
+      }
+
+      if (targetPageIndex !== signaturePageIndex) {
+        const srcRect =
+          pageRefs.current[signaturePageIndex].getBoundingClientRect();
+        const tgtRect =
+          pageRefs.current[targetPageIndex].getBoundingClientRect();
+        onSignaturePageChange(targetPageIndex);
+        onPositionChange({
+          x: signaturePosition.x + delta.x - (tgtRect.left - srcRect.left),
+          y: signaturePosition.y + delta.y - (tgtRect.top - srcRect.top),
+        });
+      } else {
+        onPositionChange({
+          x: signaturePosition.x + delta.x,
+          y: signaturePosition.y + delta.y,
+        });
+      }
+      return;
     }
+
+    // Text annotation drag
+    onTextAnnotationsChange(
+      textAnnotations.map((annotation) =>
+        annotation.id === active.id
+          ? {
+              ...annotation,
+              x: annotation.x + delta.x,
+              y: annotation.y + delta.y,
+            }
+          : annotation,
+      ),
+    );
   }
 
   /**
    *
-   * @param event
+   * @param e
+   * @param pageIndex
    */
-  function handlePdfClick(event) {
-    if (!isAddingText) return;
+  function handlePageClick(e, pageIndex) {
+    // Don't handle clicks on signature or its children
+    if (e.target.closest('.signature-wrapper')) return;
 
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
 
-    const newAnnotation = {
-      id: `text-${Date.now()}`,
-      text: '',
-      x,
-      y,
-      pageIndex: pageNumber - 1,
-      fontSize: textFontSize,
-      fontFamily: textFontFamily,
-      isEditing: true,
-    };
+    if (isAddingText) {
+      const newAnnotation = {
+        id: `text-${Date.now()}`,
+        text: '',
+        x,
+        y,
+        pageIndex,
+        fontSize: textFontSize,
+        fontFamily: textFontFamily,
+        isEditing: true,
+      };
+      onTextAnnotationsChange([...textAnnotations, newAnnotation]);
+      onAddingTextChange(false);
+      return;
+    }
 
-    onTextAnnotationsChange([...textAnnotations, newAnnotation]);
-    onAddingTextChange(false);
+    // Deselect signature when clicking elsewhere
+    setSignatureSelected(false);
   }
 
   /**
@@ -160,7 +285,9 @@ function PdfViewer({
   function handleTextUpdate(updatedAnnotation) {
     onTextAnnotationsChange(
       textAnnotations.map((annotation) =>
-        annotation.id === updatedAnnotation.id ? updatedAnnotation : annotation,
+        annotation.id === updatedAnnotation.id
+          ? updatedAnnotation
+          : annotation,
       ),
     );
   }
@@ -178,8 +305,16 @@ function PdfViewer({
   /**
    *
    */
+  function handleSignatureDelete() {
+    onSignatureDelete();
+    setSignatureSelected(false);
+  }
+
+  /**
+   *
+   */
   async function handleExport() {
-    if (!pdfFile || !pageWidth || !pageHeight) return;
+    if (!pdfFile || Object.keys(pageDimensions).length === 0) return;
     if (!signatureImage && textAnnotations.length === 0) {
       alert('Please add a signature or text annotations before exporting.');
       return;
@@ -187,14 +322,21 @@ function PdfViewer({
 
     setIsExporting(true);
     try {
+      const signaturePlacement = signatureImage
+        ? {
+            x: signaturePosition.x,
+            y: signaturePosition.y,
+            pageIndex: signaturePageIndex,
+            scale: signatureScale,
+          }
+        : null;
+
       await savePdfWithSignature(
         pdfFile.uint8Array,
         signatureImage,
-        signaturePosition,
+        signaturePlacement,
         textAnnotations,
-        pageNumber - 1,
-        pageWidth,
-        pageHeight,
+        pageDimensions,
         pdfFile.name,
       );
     } catch (error) {
@@ -208,24 +350,6 @@ function PdfViewer({
   return (
     <div className="pdf-viewer">
       <div className="pdf-controls">
-        <div className="page-controls">
-          <button
-            onClick={() => setPageNumber(Math.max(1, pageNumber - 1))}
-            disabled={pageNumber <= 1}
-          >
-            Previous
-          </button>
-          <span>
-            Page {pageNumber} of {numPages}
-          </span>
-          <button
-            onClick={() => setPageNumber(Math.min(numPages, pageNumber + 1))}
-            disabled={pageNumber >= numPages}
-          >
-            Next
-          </button>
-        </div>
-
         <div className="text-controls">
           <button
             onClick={() => onAddingTextChange(!isAddingText)}
@@ -271,41 +395,53 @@ function PdfViewer({
 
       <div className="pdf-container" ref={containerRef}>
         <DndContext onDragEnd={handleDragEnd}>
-          <div
-            className={`pdf-page-wrapper ${isAddingText ? 'adding-text' : ''}`}
-            onClick={handlePdfClick}
+          <Document
+            file={pdfFile.arrayBuffer}
+            onLoadSuccess={onDocumentLoadSuccess}
+            className="pdf-document"
           >
-            <Document
-              file={pdfFile.arrayBuffer}
-              onLoadSuccess={onDocumentLoadSuccess}
-              className="pdf-document"
-            >
-              <Page
-                pageNumber={pageNumber}
-                onLoadSuccess={onPageLoadSuccess}
-                renderTextLayer={false}
-                renderAnnotationLayer={false}
-              />
-            </Document>
-            {signatureImage && (
-              <DraggableSignature
-                signatureImage={signatureImage}
-                position={signaturePosition}
-              />
-            )}
-            {textAnnotations
-              .filter(
-                (annotation) => annotation.pageIndex === pageNumber - 1,
-              )
-              .map((annotation) => (
-                <TextAnnotation
-                  key={annotation.id}
-                  annotation={annotation}
-                  onUpdate={handleTextUpdate}
-                  onDelete={handleTextDelete}
-                />
+            {numPages &&
+              Array.from({ length: numPages }, (_, i) => (
+                <div
+                  key={i}
+                  ref={(el) => {
+                    pageRefs.current[i] = el;
+                  }}
+                  className={`pdf-page-wrapper ${isAddingText ? 'adding-text' : ''}`}
+                  onClick={(e) => handlePageClick(e, i)}
+                >
+                  <Page
+                    pageNumber={i + 1}
+                    onLoadSuccess={(page) => handlePageLoadSuccess(page, i)}
+                    renderTextLayer={false}
+                    renderAnnotationLayer={false}
+                  />
+                  {signatureImage && signaturePageIndex === i && (
+                    <DraggableSignature
+                      signatureImage={signatureImage}
+                      position={signaturePosition}
+                      scale={signatureScale}
+                      selected={signatureSelected}
+                      onDelete={handleSignatureDelete}
+                      onScaleChange={onSignatureScaleChange}
+                    />
+                  )}
+                  {textAnnotations
+                    .filter((annotation) => annotation.pageIndex === i)
+                    .map((annotation) => (
+                      <TextAnnotation
+                        key={annotation.id}
+                        annotation={annotation}
+                        onUpdate={handleTextUpdate}
+                        onDelete={handleTextDelete}
+                      />
+                    ))}
+                  <div className="page-number-label">
+                    Page {i + 1} / {numPages}
+                  </div>
+                </div>
               ))}
-          </div>
+          </Document>
         </DndContext>
       </div>
     </div>
