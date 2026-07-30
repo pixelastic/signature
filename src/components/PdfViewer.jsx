@@ -12,23 +12,27 @@ pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/b
 /**
  *
  * @param root0
+ * @param root0.id
  * @param root0.signatureImage
  * @param root0.position
  * @param root0.scale
  * @param root0.selected
  * @param root0.onDelete
+ * @param root0.onDuplicate
  * @param root0.onScaleChange
  */
 function DraggableSignature({
+  id,
   signatureImage,
   position,
   scale,
   selected,
   onDelete,
+  onDuplicate,
   onScaleChange,
 }) {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
-    id: 'signature',
+    id,
   });
 
   const style = {
@@ -106,6 +110,17 @@ function DraggableSignature({
           >
             ×
           </button>
+          <button
+            className="signature-duplicate-btn"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDuplicate();
+            }}
+            title="Duplicate signature"
+          >
+            +
+          </button>
           <div
             className="signature-resize-handle"
             onPointerDown={handleResizePointerDown}
@@ -121,13 +136,10 @@ function DraggableSignature({
  * @param root0
  * @param root0.pdfFile
  * @param root0.signatureImage
- * @param root0.signaturePosition
- * @param root0.onPositionChange
- * @param root0.signaturePageIndex
- * @param root0.onSignaturePageChange
- * @param root0.signatureScale
- * @param root0.onSignatureScaleChange
+ * @param root0.signatures
+ * @param root0.onSignatureUpdate
  * @param root0.onSignatureDelete
+ * @param root0.onSignatureDuplicate
  * @param root0.textAnnotations
  * @param root0.onTextAnnotationsChange
  * @param root0.isAddingText
@@ -140,13 +152,10 @@ function DraggableSignature({
 function PdfViewer({
   pdfFile,
   signatureImage,
-  signaturePosition,
-  onPositionChange,
-  signaturePageIndex,
-  onSignaturePageChange,
-  signatureScale,
-  onSignatureScaleChange,
+  signatures,
+  onSignatureUpdate,
   onSignatureDelete,
+  onSignatureDuplicate,
   textAnnotations,
   onTextAnnotationsChange,
   isAddingText,
@@ -159,7 +168,7 @@ function PdfViewer({
   const [numPages, setNumPages] = useState(null);
   const [isExporting, setIsExporting] = useState(false);
   const [pageDimensions, setPageDimensions] = useState({});
-  const [signatureSelected, setSignatureSelected] = useState(false);
+  const [selectedSignatureId, setSelectedSignatureId] = useState(null);
   const containerRef = useRef(null);
   const pageRefs = useRef({});
 
@@ -191,17 +200,20 @@ function PdfViewer({
   function handleDragEnd(event) {
     const { delta, active, activatorEvent } = event;
 
-    if (active.id === 'signature') {
+    const sig = signatures.find((s) => s.id === active.id);
+    if (sig) {
       // Treat as click if barely moved
       if (Math.abs(delta.x) < 3 && Math.abs(delta.y) < 3) {
-        setSignatureSelected((prev) => !prev);
+        setSelectedSignatureId((prev) =>
+          prev === sig.id ? null : sig.id,
+        );
         return;
       }
-      setSignatureSelected(false);
+      setSelectedSignatureId(null);
 
       // Detect target page from pointer position
       const pointerY = activatorEvent.clientY + delta.y;
-      let targetPageIndex = signaturePageIndex;
+      let targetPageIndex = sig.pageIndex;
       for (let i = 0; i < numPages; i++) {
         const el = pageRefs.current[i];
         if (!el) continue;
@@ -212,20 +224,24 @@ function PdfViewer({
         }
       }
 
-      if (targetPageIndex !== signaturePageIndex) {
+      if (targetPageIndex !== sig.pageIndex) {
         const srcRect =
-          pageRefs.current[signaturePageIndex].getBoundingClientRect();
+          pageRefs.current[sig.pageIndex].getBoundingClientRect();
         const tgtRect =
           pageRefs.current[targetPageIndex].getBoundingClientRect();
-        onSignaturePageChange(targetPageIndex);
-        onPositionChange({
-          x: signaturePosition.x + delta.x - (tgtRect.left - srcRect.left),
-          y: signaturePosition.y + delta.y - (tgtRect.top - srcRect.top),
+        onSignatureUpdate(sig.id, {
+          pageIndex: targetPageIndex,
+          position: {
+            x: sig.position.x + delta.x - (tgtRect.left - srcRect.left),
+            y: sig.position.y + delta.y - (tgtRect.top - srcRect.top),
+          },
         });
       } else {
-        onPositionChange({
-          x: signaturePosition.x + delta.x,
-          y: signaturePosition.y + delta.y,
+        onSignatureUpdate(sig.id, {
+          position: {
+            x: sig.position.x + delta.x,
+            y: sig.position.y + delta.y,
+          },
         });
       }
       return;
@@ -275,7 +291,7 @@ function PdfViewer({
     }
 
     // Deselect signature when clicking elsewhere
-    setSignatureSelected(false);
+    setSelectedSignatureId(null);
   }
 
   /**
@@ -305,9 +321,9 @@ function PdfViewer({
   /**
    *
    */
-  function handleSignatureDelete() {
-    onSignatureDelete();
-    setSignatureSelected(false);
+  function handleSignatureDelete(id) {
+    onSignatureDelete(id);
+    setSelectedSignatureId(null);
   }
 
   /**
@@ -315,26 +331,24 @@ function PdfViewer({
    */
   async function handleExport() {
     if (!pdfFile || Object.keys(pageDimensions).length === 0) return;
-    if (!signatureImage && textAnnotations.length === 0) {
+    if (signatures.length === 0 && textAnnotations.length === 0) {
       alert('Please add a signature or text annotations before exporting.');
       return;
     }
 
     setIsExporting(true);
     try {
-      const signaturePlacement = signatureImage
-        ? {
-            x: signaturePosition.x,
-            y: signaturePosition.y,
-            pageIndex: signaturePageIndex,
-            scale: signatureScale,
-          }
-        : null;
+      const signaturePlacements = signatures.map((sig) => ({
+        image: sig.image,
+        x: sig.position.x,
+        y: sig.position.y,
+        pageIndex: sig.pageIndex,
+        scale: sig.scale,
+      }));
 
       await savePdfWithSignature(
         pdfFile.uint8Array,
-        signatureImage,
-        signaturePlacement,
+        signaturePlacements,
         textAnnotations,
         pageDimensions,
         pdfFile.name,
@@ -385,7 +399,7 @@ function PdfViewer({
           onClick={handleExport}
           disabled={
             isExporting ||
-            (!signatureImage && textAnnotations.length === 0)
+            (signatures.length === 0 && textAnnotations.length === 0)
           }
           className="export-button"
         >
@@ -416,16 +430,23 @@ function PdfViewer({
                     renderTextLayer={false}
                     renderAnnotationLayer={false}
                   />
-                  {signatureImage && signaturePageIndex === i && (
-                    <DraggableSignature
-                      signatureImage={signatureImage}
-                      position={signaturePosition}
-                      scale={signatureScale}
-                      selected={signatureSelected}
-                      onDelete={handleSignatureDelete}
-                      onScaleChange={onSignatureScaleChange}
-                    />
-                  )}
+                  {signatures
+                    .filter((sig) => sig.pageIndex === i)
+                    .map((sig) => (
+                      <DraggableSignature
+                        key={sig.id}
+                        id={sig.id}
+                        signatureImage={sig.image}
+                        position={sig.position}
+                        scale={sig.scale}
+                        selected={selectedSignatureId === sig.id}
+                        onDelete={() => handleSignatureDelete(sig.id)}
+                        onDuplicate={() => onSignatureDuplicate(sig.id)}
+                        onScaleChange={(newScale) =>
+                          onSignatureUpdate(sig.id, { scale: newScale })
+                        }
+                      />
+                    ))}
                   {textAnnotations
                     .filter((annotation) => annotation.pageIndex === i)
                     .map((annotation) => (

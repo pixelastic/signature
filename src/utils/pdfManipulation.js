@@ -10,19 +10,17 @@ async function dataUrlToArrayBuffer(dataUrl) {
 }
 
 /**
- * Adds a signature image and text annotations to a PDF and downloads it
+ * Adds signature images and text annotations to a PDF and downloads it
  *
  * @param {Uint8Array} pdfData - The original PDF as Uint8Array
- * @param {string} signatureDataUrl - The signature image as data URL
- * @param {object} signaturePlacement - Placement {x, y, pageIndex, scale} or null
+ * @param {Array} signaturePlacements - Array of {image, x, y, pageIndex, scale}
  * @param {Array} textAnnotations - Array of text annotations
  * @param {object} pageDimensions - Map of pageIndex to {width, height}
  * @param {string} originalFileName - The original PDF filename
  */
 export async function savePdfWithSignature(
   pdfData,
-  signatureDataUrl,
-  signaturePlacement,
+  signaturePlacements,
   textAnnotations,
   pageDimensions,
   originalFileName,
@@ -81,61 +79,57 @@ export async function savePdfWithSignature(
     });
   });
 
-  // Draw signature if provided
-  if (signaturePlacement && signatureDataUrl) {
-    const sigPage = pages[signaturePlacement.pageIndex];
-    const dims = pageDimensions[signaturePlacement.pageIndex];
+  // Draw all signatures
+  // Cache embedded images by data URL to avoid re-embedding duplicates
+  const embeddedImages = {};
+  for (const placement of signaturePlacements) {
+    const sigPage = pages[placement.pageIndex];
+    const dims = pageDimensions[placement.pageIndex];
+    if (!sigPage || !dims) continue;
 
-    if (sigPage && dims) {
-      const { width: pdfWidth, height: pdfHeight } = sigPage.getSize();
-      const scaleX = pdfWidth / dims.width;
-      const scaleY = pdfHeight / dims.height;
+    const { width: pdfWidth, height: pdfHeight } = sigPage.getSize();
+    const scaleX = pdfWidth / dims.width;
+    const scaleY = pdfHeight / dims.height;
 
-      const signatureBytes = await dataUrlToArrayBuffer(signatureDataUrl);
-      let signatureImage;
-
-      if (signatureDataUrl.startsWith('data:image/png')) {
-        signatureImage = await pdfDoc.embedPng(signatureBytes);
+    if (!embeddedImages[placement.image]) {
+      const signatureBytes = await dataUrlToArrayBuffer(placement.image);
+      if (placement.image.startsWith('data:image/png')) {
+        embeddedImages[placement.image] = await pdfDoc.embedPng(signatureBytes);
       } else if (
-        signatureDataUrl.startsWith('data:image/jpeg') ||
-        signatureDataUrl.startsWith('data:image/jpg')
+        placement.image.startsWith('data:image/jpeg') ||
+        placement.image.startsWith('data:image/jpg')
       ) {
-        signatureImage = await pdfDoc.embedJpg(signatureBytes);
+        embeddedImages[placement.image] = await pdfDoc.embedJpg(signatureBytes);
       } else {
-        // Default to PNG for other formats
-        signatureImage = await pdfDoc.embedPng(signatureBytes);
+        embeddedImages[placement.image] = await pdfDoc.embedPng(signatureBytes);
       }
-
-      const signatureDims = signatureImage.scale(1);
-
-      // Calculate signature dimensions (scaled from base 200x100)
-      const maxWidth = 200 * signaturePlacement.scale;
-      const maxHeight = 100 * signaturePlacement.scale;
-      let signatureWidth = signatureDims.width;
-      let signatureHeight = signatureDims.height;
-
-      if (signatureWidth > maxWidth) {
-        signatureHeight = (maxWidth / signatureWidth) * signatureHeight;
-        signatureWidth = maxWidth;
-      }
-      if (signatureHeight > maxHeight) {
-        signatureWidth = (maxHeight / signatureHeight) * signatureWidth;
-        signatureHeight = maxHeight;
-      }
-
-      // Convert viewport coordinates to PDF coordinates
-      const pdfX = signaturePlacement.x * scaleX;
-      const pdfY =
-        pdfHeight - signaturePlacement.y * scaleY - signatureHeight * scaleY;
-
-      // Draw the signature on the page
-      sigPage.drawImage(signatureImage, {
-        x: pdfX,
-        y: pdfY,
-        width: signatureWidth * scaleX,
-        height: signatureHeight * scaleY,
-      });
     }
+    const signatureImage = embeddedImages[placement.image];
+    const signatureDims = signatureImage.scale(1);
+
+    const maxWidth = 200 * placement.scale;
+    const maxHeight = 100 * placement.scale;
+    let signatureWidth = signatureDims.width;
+    let signatureHeight = signatureDims.height;
+
+    if (signatureWidth > maxWidth) {
+      signatureHeight = (maxWidth / signatureWidth) * signatureHeight;
+      signatureWidth = maxWidth;
+    }
+    if (signatureHeight > maxHeight) {
+      signatureWidth = (maxHeight / signatureHeight) * signatureWidth;
+      signatureHeight = maxHeight;
+    }
+
+    const pdfX = placement.x * scaleX;
+    const pdfY = pdfHeight - placement.y * scaleY - signatureHeight * scaleY;
+
+    sigPage.drawImage(signatureImage, {
+      x: pdfX,
+      y: pdfY,
+      width: signatureWidth * scaleX,
+      height: signatureHeight * scaleY,
+    });
   }
 
   // Save the PDF
